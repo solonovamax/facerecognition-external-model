@@ -1,11 +1,11 @@
-from typing import Callable, Tuple
-from flask import Flask, request, abort
-from functools import wraps
-import dlib
-import os
 import json
-import numpy
+import os
+from functools import wraps
+from typing import Callable, List, Any
 
+import dlib
+import numpy
+from flask import Flask, request, abort
 
 # Info
 PACKAGE_VERSION = "1.0.0"
@@ -15,9 +15,10 @@ DETECTOR_PATH = "vendor/models/mmod_human_face_detector.dat"
 PREDICTOR_PATH = "vendor/models/shape_predictor_5_face_landmarks.dat"
 FACE_REC_MODEL_PATH = "vendor/models/dlib_face_recognition_resnet_model_v1.dat"
 
-CNN_DETECTOR: object = None
-PREDICTOR: object = None
-FACE_REC: object = None
+CNN_DETECTOR: dlib.cnn_face_detection_model_v1 | None = None
+PREDICTOR: dlib.shape_predictor | None = None
+FACE_REC: dlib.face_recognition_model_v1 | None = None
+HOG_DETECTOR: dlib.fhog_object_detector | None = None
 
 MAX_IMG_SIZE = 3840 * 2160
 
@@ -30,9 +31,10 @@ try:
 except KeyError:
     FACE_MODEL = 4
 
+
 # model 1 face detection
-def cnn_detect(img: numpy.ndarray) -> list:
-    dets: list = CNN_DETECTOR(img)
+def cnn_detect(img: numpy.ndarray) -> list[dict[str, Any]]:
+    dets: list[dlib.mmod_rectangle] = CNN_DETECTOR(img)
 
     faces = []
     for det in dets:
@@ -57,9 +59,11 @@ def cnn_detect(img: numpy.ndarray) -> list:
 
 # model 3 face detection
 def hog_detect(img: numpy.ndarray) -> list:
-    dets: list = HOG_DETECTOR(img, 1)
+    dets: dlib.rectangles = HOG_DETECTOR(img, 1)
 
     faces = []
+
+    det: dlib.rectangle
     for det in dets:
         landmarks: dlib.full_object_detection = PREDICTOR(img, det)
         descriptor = FACE_REC.compute_face_descriptor(img, landmarks)
@@ -78,7 +82,7 @@ def hog_detect(img: numpy.ndarray) -> list:
 
 
 # model 4 face detection
-def cnn_hog_detect(img: numpy.ndarray) -> Tuple[int, list]:
+def cnn_hog_detect(img: numpy.ndarray) -> list:
     cnn_faces = cnn_detect(img)
     if len(cnn_faces) == 0:
         return []
@@ -90,13 +94,14 @@ def cnn_hog_detect(img: numpy.ndarray) -> Tuple[int, list]:
     return detected_faces
 
 
-DETECT_FACES_FUNCTIONS: Tuple[Callable[[numpy.ndarray], Tuple[int, list]]] = (
+DETECT_FACES_FUNCTIONS: List[Callable[[numpy.ndarray], list] | None] = [
     None,
     cnn_detect,
     None,
     hog_detect,
     cnn_hog_detect,
-)
+]
+
 
 def open_dlib_models():
     global CNN_DETECTOR, HOG_DETECTOR, PREDICTOR, FACE_REC
@@ -135,6 +140,7 @@ def require_appkey(view_function):
 
     return decorated_function
 
+
 # Endpoints
 @app.route("/detect", methods=["POST"])
 @require_appkey
@@ -158,6 +164,7 @@ def detect_faces() -> dict:
     os.remove(image_path)
 
     return {"filename": filename, "faces-count": len(faces), "faces": faces}
+
 
 @app.route("/compute", methods=["POST"])
 @require_appkey
@@ -186,28 +193,27 @@ def compute():
 
     return {"filename": filename, "face": face_json}
 
+
 @app.route("/open")
 @require_appkey
 def open_model():
     open_dlib_models()
     return {"preferred_mimetype": "image/jpeg", "maximum_area": MAX_IMG_SIZE}
 
+
 @app.route("/health")
 def health():
     return 'ok'
 
+
 @app.route("/welcome")
 def welcome():
     if (
-        (
-            not os.path.exists(DETECTOR_PATH)
-        )
-        or (
-            not os.path.exists(PREDICTOR_PATH)
-        )
-        or (
-            not os.path.exists(FACE_REC_MODEL_PATH)
-        )
+            not (
+                    os.path.exists(DETECTOR_PATH)
+                    and os.path.exists(PREDICTOR_PATH)
+                    and os.path.exists(FACE_REC_MODEL_PATH)
+            )
     ):
         return {
             "facerecognition-external-model":
@@ -215,6 +221,7 @@ def welcome():
             "version": PACKAGE_VERSION
         }
     return {"facerecognition-external-model": "welcome", "version": PACKAGE_VERSION, "model": FACE_MODEL}
+
 
 #
 # Conversion utilities
@@ -239,14 +246,14 @@ def jsonToRect(json) -> dlib.rectangle:
     )
 
 
-def overlap_percent(first: dlib.rectangle, second: dlib.rectangle) -> float:
+def overlap_percent(first: dict[str, int], second: dict[str, int]) -> float:
     # if there is not intersection, return 0.0
     # (right is a larger value than left, bottom is larger than top)
     if (
-        first["left"] >= second["right"]
-        or second["left"] >= first["right"]
-        or first["top"] >= second["bottom"]
-        or second["top"] >= first["bottom"]
+            first["left"] >= second["right"]
+            or second["left"] >= first["right"]
+            or first["top"] >= second["bottom"]
+            or second["top"] >= first["bottom"]
     ):
         return 0.0
 
@@ -258,10 +265,10 @@ def overlap_percent(first: dlib.rectangle, second: dlib.rectangle) -> float:
 
     # areas
     first_area = (first["right"] - first["left"]) * (
-        first["bottom"] - first["top"]
+            first["bottom"] - first["top"]
     )
     second_area = (second["right"] - second["left"]) * (
-        second["bottom"] - second["top"]
+            second["bottom"] - second["top"]
     )
     overlap_area = (right - left) * (bottom - top)
 
