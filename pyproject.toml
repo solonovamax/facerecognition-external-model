@@ -9,9 +9,9 @@ readme = "README.md"
 python = "~3.11"
 dlib = "^19.24.6"
 flask = "^3.0.3"
-numpy = "^2.1.3"
 gunicorn = "^23.0.0"
-numpy = "^2.1.3"
+deepface = { git = "https://github.com/serengil/deepface.git", rev = "cc484b54be5188eb47faf132995af16a871d70b9" }
+tensorflow = "2.12.0"
 
 
 [build-system]
