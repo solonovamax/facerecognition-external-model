@@ -42,7 +42,7 @@ app = Flask(__name__)
 try:
     FACE_MODEL = int(os.environ["FACE_MODEL"])
 except KeyError:
-    FACE_MODEL = 5
+    FACE_MODEL = 4
 
 
 # model 1 face detection
@@ -191,6 +191,8 @@ DETECT_FACES_FUNCTIONS: List[Callable[[ndarray], list] | None] = [
     None,
     hog_detect,
     cnn_hog_detect,
+    None,
+    None,
     deepface_detect,
 ]
 
@@ -201,7 +203,7 @@ def open_dlib_models():
     if FACE_REC is not None:
         return
 
-    if FACE_MODEL == 5:
+    if FACE_MODEL == 7:
         return
 
     # we don't need the cnn detector for model 3
@@ -278,7 +280,7 @@ def compute():
     if FACE_REC is None:
         open_dlib_models()
 
-    if FACE_MODEL != 5:
+    if FACE_MODEL != 7:
         face_json = compute_dlib(face_json, img)
     else:
         face_json = compute_deepface(face_json, img)
